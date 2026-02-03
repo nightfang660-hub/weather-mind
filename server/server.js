@@ -18,7 +18,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // unsafe-inline often needed for Vite dev
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
             imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
@@ -46,7 +46,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate Limiting (Protection against Brute Force)
+// Rate Limiting
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
@@ -58,7 +58,7 @@ const loginLimiter = rateLimit({
 // --- HELPER: AUTH MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) return res.status(401).json({ error: 'Access token required' });
 
@@ -85,7 +85,6 @@ app.post('/auth/signup', async (req, res) => {
     }
 
     try {
-        // Hash password
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(password, salt);
         const userId = uuidv4();
@@ -103,14 +102,11 @@ app.post('/auth/signup', async (req, res) => {
             [profileId, userId, full_name || '', 'user']
         );
 
-        // Auto-login: Generate Token
         const token = jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: '7d' });
 
-        // Fetch the created profile
         const profileRes = await db.query('SELECT * FROM profiles WHERE id = $1', [profileId]);
         const profile = profileRes.rows[0];
 
-        // Security Log
         await db.query(
             'INSERT INTO audit_logs (id, user_id, action, ip_address) VALUES ($1, $2, $3, $4)',
             [uuidv4(), userId, 'SIGNUP_AUTO_LOGIN', req.ip]
@@ -118,12 +114,11 @@ app.post('/auth/signup', async (req, res) => {
 
         res.status(201).json({ message: 'User created successfully', token, user: { ...profile, email } });
     } catch (error) {
-        // Postgres Unique Violation Code: 23505
         if (error.code === '23505') {
             return res.status(409).json({ error: 'Email already exists' });
         }
         console.error('Signup Error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 });
 
@@ -146,14 +141,11 @@ app.post('/auth/login', loginLimiter, async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Generate Token
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
-        // Generate profile info
         const profileRes = await db.query('SELECT * FROM profiles WHERE user_id = $1', [user.id]);
         const profile = profileRes.rows[0];
 
-        // Security Log
         await db.query(
             'INSERT INTO audit_logs (id, user_id, action, ip_address) VALUES ($1, $2, $3, $4)',
             [uuidv4(), user.id, 'LOGIN', req.ip]
@@ -162,11 +154,11 @@ app.post('/auth/login', loginLimiter, async (req, res) => {
         res.json({ token, user: { ...profile, email: user.email } });
     } catch (error) {
         console.error('Login Error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 });
 
-// 3. GET PROFILE (Protected)
+// 3. GET PROFILE
 app.get('/user/profile', authenticateToken, async (req, res) => {
     try {
         const result = await db.query('SELECT * FROM profiles WHERE user_id = $1', [req.user.id]);
@@ -180,12 +172,11 @@ app.get('/user/profile', authenticateToken, async (req, res) => {
     }
 });
 
-// 4. UPDATE PROFILE (Protected)
+// 4. UPDATE PROFILE
 app.put('/user/profile', authenticateToken, async (req, res) => {
     const { full_name, location, website, avatar_url } = req.body;
 
     try {
-        // Postgres OK with COALESCE
         await db.query(`
             UPDATE profiles 
             SET full_name = COALESCE($1, full_name),
@@ -204,25 +195,19 @@ app.put('/user/profile', authenticateToken, async (req, res) => {
     }
 });
 
-// 5. QUANTUM WEATHER ANALYSIS (Proxy to Microservice)
+// 5. QUANTUM WEATHER ANALYSIS
 app.post('/weather/quantum-analyze', async (req, res) => {
     const { weather, location } = req.body;
     const weatherData = weather || req.body;
 
-    // Cache Key
-    const cacheKey = location && location.name ? `${location.name}_${new Date().getHours()}` : null;
-
+    // Cache Logic
     if (location && location.name) {
-        // Postgres date math: timestamp > NOW() - INTERVAL '10 minutes'
-        // For Hybrid Compatibility: We use ISO string date comparison.
         const cutoffTime = new Date(Date.now() - 10 * 60000).toISOString();
-
         const recentLogRes = await db.query(`
             SELECT * FROM quantum_logs 
             WHERE city = $1 AND timestamp > $2
             ORDER BY timestamp DESC LIMIT 1
         `, [location.name, cutoffTime]);
-
         const recentLog = recentLogRes.rows[0];
 
         if (recentLog) {
@@ -243,7 +228,27 @@ app.post('/weather/quantum-analyze', async (req, res) => {
         }
     }
 
-    const QUANTUM_SERVICE_URL = process.env.QUANTUM_API_URL || 'http://localhost:8000';
+    // Dynamic URL Logic for Vercel vs Local
+    let QUANTUM_SERVICE_URL = process.env.QUANTUM_API_URL;
+
+    if (!QUANTUM_SERVICE_URL) {
+        if (process.env.VERCEL_URL) {
+            // Vercel auto-sets VERCEL_URL (without https://)
+            QUANTUM_SERVICE_URL = `https://${process.env.VERCEL_URL}/api`;
+            // NOTE: We assume the rewritten path /api/quantum maps to the python function.
+            // If the python function is at /api/quantum, then the fetch should point to...
+            // Wait, the rewrite is /quantum/* -> /api/quantum.
+            // If I call https://app.vercel.app/quantum/analyze, it goes to /api/quantum.
+            // So I should target the public URL /quantum or the internal /api/quantum?
+            // Hitting the public URL /quantum is safer as it respects rewrites.
+            // But wait, the rewrite handles INCOMING requests.
+            // If Node fetches /quantum/analyze on itself, it enters via public route.
+            QUANTUM_SERVICE_URL = `https://${process.env.VERCEL_URL}`;
+            // And below we append /quantum/analyze.
+        } else {
+            QUANTUM_SERVICE_URL = 'http://localhost:8000';
+        }
+    }
 
     try {
         console.log(`Forwarding to Quantum Engine: ${QUANTUM_SERVICE_URL}/quantum/analyze`);
@@ -260,14 +265,13 @@ app.post('/weather/quantum-analyze', async (req, res) => {
 
         const data = await response.json();
 
-        // --- TEMPORAL QUANTUM PHYSICS ENGINE ---
+        // Updated Risk Engine
         let chaosVelocity = 0;
         let chaosAcceleration = 0;
         let cycloneMomentum = 0;
         let stateDrift = 0;
         let stateLockIn = false;
 
-        // Fetch previous logs
         if (location && location.name) {
             const logsRes = await db.query(`
                 SELECT * FROM quantum_logs 
@@ -275,17 +279,15 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                 ORDER BY timestamp DESC LIMIT 2
             `, [location.name]);
             const logs = logsRes.rows;
-
             const now = data;
-            const prev1 = logs[0]; // T-1 
-            const prev2 = logs[1]; // T-2 
+            const prev1 = logs[0];
+            const prev2 = logs[1];
 
             if (prev1) {
                 chaosVelocity = now.atmospheric_chaos - prev1.atmospheric_chaos;
-
-                const nowDominantProb = now.top_states && now.top_states.length > 0 ? now.top_states[0].probability : 0;
+                const nowDominantProb = now.top_states?.[0]?.probability || 0;
                 const prevStates = JSON.parse(prev1.top_states_json || '[]');
-                const prevSameState = prevStates.find(s => s.state === (now.top_states[0]?.state));
+                const prevSameState = prevStates.find(s => s.state === (now.top_states?.[0]?.state));
                 const prevProb = prevSameState ? prevSameState.probability : 0;
 
                 stateDrift = nowDominantProb - prevProb;
@@ -294,8 +296,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                 if (prev2) {
                     const prevVelocity = prev1.atmospheric_chaos - prev2.atmospheric_chaos;
                     chaosAcceleration = chaosVelocity - prevVelocity;
-
-                    if (stateDrift > 0 && (prevProb > (prevStates[0]?.probability || 0))) {
+                    if (stateDrift > 0 && prevProb > (prevStates[0]?.probability || 0)) {
                         stateLockIn = true;
                     }
                 }
@@ -303,7 +304,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
         }
 
         const momentumFactor = Math.min(1.0, Math.max(0, cycloneMomentum * 5));
-
         const finalRiskScore = (
             (0.3 * data.storm_probability) +
             (0.3 * data.atmospheric_chaos) +
@@ -311,10 +311,9 @@ app.post('/weather/quantum-analyze', async (req, res) => {
             (0.2 * momentumFactor)
         );
 
-        // LOG TO DATABASE
+        // LOG
         if (location && location.name) {
             try {
-                const logId = uuidv4();
                 await db.query(`
                     INSERT INTO quantum_logs (
                         id, city, latitude, longitude, 
@@ -324,7 +323,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                         chaos_velocity, chaos_acceleration, cyclone_momentum, state_drift
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 `, [
-                    logId,
+                    uuidv4(),
                     location.name,
                     location.lat,
                     location.lon,
@@ -332,7 +331,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                     data.rain_confidence,
                     data.atmospheric_chaos,
                     data.forecast_reliability,
-                    data.top_states && data.top_states.length > 0 ? data.top_states[0].state : 'Unknown',
+                    data.top_states?.[0]?.state || 'Unknown',
                     data.quantum_summary,
                     JSON.stringify(data.top_states || []),
                     data.volatility || 0,
@@ -362,7 +361,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
         console.error('Quantum Intelligence Unavailable:', error.message);
         res.status(503).json({
             error: "Quantum Service Unavailable",
-            details: "Please ensure the Python Quantum Service is running",
+            details: "Please ensure the Python Quantum Service is running. If on Vercel, ensure the function is deployed.",
             fallback_data: {
                 storm_probability: 0,
                 rain_confidence: 0,
@@ -375,7 +374,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
     }
 });
 
-// 5.1 QUANTUM HISTORY (Timeline)
+// 5.1 QUANTUM HISTORY
 app.get('/weather/quantum-history', async (req, res) => {
     const { city } = req.query;
     if (!city) return res.status(400).json({ error: "City required" });
@@ -387,29 +386,24 @@ app.get('/weather/quantum-history', async (req, res) => {
             ORDER BY timestamp DESC 
             LIMIT 50
         `, [`%${city}%`]);
-
-        const history = result.rows;
-
-        const parsedHistory = history.map(h => ({
-            ...h,
-            top_states: JSON.parse(h.top_states_json || '[]')
-        }));
-
-        res.json(parsedHistory);
+        res.json(result.rows.map(h => ({ ...h, top_states: JSON.parse(h.top_states_json || '[]') })));
     } catch (err) {
-        console.error("History Fetch Error:", err);
         res.status(500).json({ error: "Failed to fetch history" });
     }
 });
 
-// 5.2 QUANTUM BATCH (Multi-City)
+// 5.2 QUANTUM BATCH
 app.post('/weather/quantum-batch', async (req, res) => {
     const { requests } = req.body;
     if (!requests || !Array.isArray(requests)) return res.status(400).json({ error: "Invalid batch request" });
 
-    const QUANTUM_SERVICE_URL = process.env.QUANTUM_API_URL || 'http://localhost:8000';
-    const results = [];
+    let QUANTUM_SERVICE_URL = process.env.QUANTUM_API_URL;
+    if (!QUANTUM_SERVICE_URL) {
+        if (process.env.VERCEL_URL) QUANTUM_SERVICE_URL = `https://${process.env.VERCEL_URL}`;
+        else QUANTUM_SERVICE_URL = 'http://localhost:8000';
+    }
 
+    const results = [];
     await Promise.all(requests.map(async (reqItem) => {
         try {
             const response = await fetch(`${QUANTUM_SERVICE_URL}/quantum/analyze`, {
@@ -417,10 +411,8 @@ app.post('/weather/quantum-batch', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reqItem.weather)
             });
-
             if (response.ok) {
                 const data = await response.json();
-
                 if (reqItem.location) {
                     try {
                         await db.query(`
@@ -442,9 +434,8 @@ app.post('/weather/quantum-batch', async (req, res) => {
                             data.quantum_summary,
                             JSON.stringify(data.top_states || [])
                         ]);
-                    } catch (e) { console.error("Batch Log Error", e); }
+                    } catch (e) { }
                 }
-
                 results.push({ location: reqItem.location, analysis: data });
             } else {
                 results.push({ location: reqItem.location, error: "Failed" });
@@ -453,48 +444,31 @@ app.post('/weather/quantum-batch', async (req, res) => {
             results.push({ location: reqItem.location, error: e.message });
         }
     }));
-
     res.json(results);
 });
 
-// 6. GEOLOCATION PROXY (Fixes CORS issues)
+// 6. GEOLOCATION PROXY
 app.get('/api/location', async (req, res) => {
     try {
         const response = await fetch('http://ip-api.com/json/');
         const data = await response.json();
-
         if (data.status === 'success') {
-            res.json({
-                lat: data.lat,
-                lon: data.lon,
-                city: data.city,
-                country: data.country
-            });
+            res.json({ lat: data.lat, lon: data.lon, city: data.city, country: data.country });
         } else {
             res.status(404).json({ error: 'Location not found' });
         }
     } catch (error) {
-        console.error("Geo Proxy Error:", error);
         res.status(500).json({ error: 'Failed to fetch location' });
     }
 });
 
-// Start Server only if run directly
 if (require.main === module) {
     const server = app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
         console.log(`Security: Active`);
-
-        // Check DB Type
-        // If the adapter exposed a type property, we could log it. 
-        // But the index.js already logs it on start.
     });
 
     setInterval(() => { }, 1000 * 60 * 60);
-
-    process.on('exit', (code) => {
-        console.log(`Process exiting with code: ${code}`);
-    });
 
     process.on('SIGINT', () => {
         console.log('Received SIGINT. Shutting down.');

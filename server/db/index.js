@@ -1,6 +1,12 @@
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+try {
+    // Attempt to load .env for local dev
+    // On Vercel, this might fail or not be needed, so we wrap it
+    require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+} catch (e) {
+    // Ignore error
+}
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -10,6 +16,11 @@ if (isProduction) {
     // --- POSTGRESQL (Production / Vercel) ---
     const { Pool } = require('pg');
 
+    if (!process.env.DATABASE_URL) {
+        console.error("FATAL: DATABASE_URL is missing in environment variables.");
+        // We don't throw here to allow app to start, but requests will fail
+    }
+
     // Use connection string from env (Supabase)
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
@@ -18,8 +29,18 @@ if (isProduction) {
 
     console.log('Database Driver: PostgreSQL (Production)');
 
+    // Connection Test (Async)
+    pool.connect().then(client => {
+        console.log("Postgres Connected Successfully");
+        client.release();
+    }).catch(err => {
+        console.error("Fatality: Postgres Connection Failed:", err.message);
+    });
+
     db = {
         query: (text, params) => pool.query(text, params),
+
+        // Sync methods throw in Prod
         prepare: () => { throw new Error("Sync prepare() not supported in Postgres mode"); },
         transaction: (cb) => { throw new Error("Sync transaction() not supported in Postgres mode"); }
     };
@@ -64,11 +85,7 @@ if (isProduction) {
                     // For INSERT/UPDATE/DELETE
                     // Check if it's an INSERT ... RETURNING *
                     if (lowText.includes('returning')) {
-                        // SQLite supports RETURNING since 3.35, better-sqlite3 supports it.
-                        // However, we rely on standard .run() vs .all() usually.
-                        // If RETURNING is present, we should use .all() or .get()
                         const stmt = sqlite.prepare(queryText);
-                        // If we expect multiple or single, usually Postgres query returns .rows
                         const rows = stmt.all(...params);
                         return { rows, rowCount: rows.length };
                     }
