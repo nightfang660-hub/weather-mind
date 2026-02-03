@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PREMIUM DUAL THEME SYSTEM - QUANTUM & LUXURY */
+
+@layer base {
+  :root {
+    /* DEFAULT (LIGHT) THEME - "Aero Day" */
+    --background: 210 40% 98%;
+    /* #F0F4F8 */
+    --foreground: 222 47% 11%;
+    /* #0F172A */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 210 100% 50%;
+    /* #007AFF (Apple Blue) */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222 47% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 1rem;
+
+    /* Charts (Light) */
+    --chart-1: 221 83% 53%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* Glass (Light) */
+    --glass-bg: 0 0% 100% / 0.65;
+    --glass-border: 0 0% 100% / 0.4;
+    --glass-shadow: 0 8px 32px -4px rgba(31, 38, 135, 0.1);
+  }
+
+  .dark {
+    /* DARK THEME - "Quantum Midnight" */
+    --background: 224 50% 12%;
+    /* #0F1623 Deep Navy */
+    --foreground: 210 40% 98%;
+    /* #F8FAFC */
+
+    --card: 224 45% 18%;
+    /* #192132 */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 45% 16%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 190 100% 50%;
+    /* #00E5FF (Neon Cyan) */
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 22%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 22%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 190 100% 50%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
+    --ring: 190 100% 50%;
+
+    /* Charts (Dark - Neon) */
+    --chart-1: 190 100% 50%;
+    /* Cyan */
+    --chart-2: 260 100% 65%;
+    /* Purple */
+    --chart-3: 330 80% 60%;
+    /* Pink */
+    --chart-4: 45 100% 50%;
+    /* Amber */
+    --chart-5: 150 100% 45%;
+    /* Green */
+
+    /* Glass (Dark) */
+    --glass-bg: 224 40% 15% / 0.4;
+    --glass-border: 210 40% 98% / 0.08;
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased transition-colors duration-500 overflow-x-hidden;
+  }
+
+  /* Typography Overrides */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+
+  /* --- ULTRA GLASS CARD --- */
+  .glass-panel {
+    @apply bg-card/60 backdrop-blur-xl border border-white/10 shadow-lg rounded-3xl transition-all duration-300;
+  }
+
+  .glass-panel:hover {
+    @apply bg-card/70 border-white/20 shadow-xl transform hover:-translate-y-1;
+    box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.4);
+  }
+
+  .dark .glass-panel {
+    background: linear-gradient(145deg, rgba(23, 30, 48, 0.7) 0%, rgba(15, 22, 35, 0.5) 100%);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  /* --- HERO CARD SPECIAL --- */
+  .hero-glass {
+    @apply relative overflow-hidden rounded-3xl border border-white/10;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  }
+
+  .dark .hero-glass {
+    background: linear-gradient(135deg, rgba(40, 50, 80, 0.6) 0%, rgba(10, 15, 30, 0.8) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* --- NEON GLOW TEXT --- */
+  .text-glow {
+    text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+  }
+
+  .text-glow-amber {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+  }
+
+  /* --- ANIMATIONS --- */
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0% {
+      transform: translateY(0px);
+    }
+
+    50% {
+      transform: translateY(-10px);
+    }
+
+    100% {
+      transform: translateY(0px);
+    }
+  }
+
+  /* --- SCROLLBARS --- */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    @apply bg-white/20;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Leaflet Map overrides for dark mode */
+  .dark .leaflet-container {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+}
+
+@layer utilities {
+  .clip-path-slant {
+    clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+  }
+}
