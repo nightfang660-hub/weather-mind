@@ -1,0 +1,20 @@
+{
+    "rewrites": [
+        {
+            "source": "/auth/:path*",
+            "destination": "/api/index"
+        },
+        {
+            "source": "/user/:path*",
+            "destination": "/api/index"
+        },
+        {
+            "source": "/weather/:path*",
+            "destination": "/api/index"
+        },
+        {
+            "source": "/quantum/:path*",
+            "destination": "/api/quantum"
+        }
+    ]
+}

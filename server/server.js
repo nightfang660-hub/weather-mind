@@ -14,9 +14,20 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me-in-prod';
 
 // --- MIDDLEWARE & SECURITY ---
+// --- MIDDLEWARE & SECURITY ---
 app.use(helmet({
-    contentSecurityPolicy: false,
-})); // Sets key security headers (CSP disabled for devtools/local access)
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // unsafe-inline often needed for Vite dev
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+            imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+            connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https://*.supabase.co", "http://ip-api.com"]
+        },
+    },
+}));
+
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
@@ -41,14 +52,13 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate Limiting (Brute force protection)
-// Rate Limiting (Brute force protection)
+// Rate Limiting (Protection against Brute Force)
 const loginLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute (relaxed for dev)
-    max: 1000, // Limit each IP to 1000 requests per window (very relaxed for dev)
-    message: { error: 'Too many login attempts, please try again later' }, // JSON response
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 login requests per window
+    message: { error: 'Too many login attempts. Please try again after 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 // --- HELPER: AUTH MIDDLEWARE ---
@@ -64,8 +74,6 @@ const authenticateToken = (req, res, next) => {
         next();
     });
 };
-
-// --- ROUTES ---
 
 // --- ROUTES ---
 
@@ -199,7 +207,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
 
     // --- CACHING MECHANISM ---
     // Simple in-memory cache to reduce load
-    // Key: CityName_Hour (approximate) - simplistic but effective for demo
     const cacheKey = location && location.name ? `${location.name}_${new Date().getHours()}` : null;
 
     // In a real app, use Redis. Here, we'll rely on the DB logs as a cache if recent enough
@@ -249,7 +256,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
         // --- TEMPORAL QUANTUM PHYSICS ENGINE ---
         let chaosVelocity = 0;
         let chaosAcceleration = 0;
-        let pressureDropRate = 0;
         let cycloneMomentum = 0;
         let stateDrift = 0;
         let stateLockIn = false;
@@ -270,17 +276,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                 // 1. Chaos Velocity (dChaos/dt)
                 chaosVelocity = now.atmospheric_chaos - prev1.atmospheric_chaos;
 
-                // 2. Pressure Drop Rate (Used for Cyclone Momentum)
-                // We don't store raw pressure in logs? We should have. 
-                // But we can infer it or we assume T-1 pressure was normal if not tracked.
-                // Wait, logs table doesn't have pressure column? 
-                // Let's rely on Cyclone Index change or proxy pressure via cyclone_index which captures pressure factor
-                // Better: Use `cyclone_index` drift as momentum proxy if pressure log missing.
-                // Or simply calculate from current vs previous Risk Index.
-
-                // Let's implement State Drift
-                // Prob of dominant state now vs previous prob of *that same state* if it existed
-                // Simplified: Change in dominant prob
                 const nowDominantProb = now.top_states && now.top_states.length > 0 ? now.top_states[0].probability : 0;
                 // We stored top_states_json
                 const prevStates = JSON.parse(prev1.top_states_json || '[]');
@@ -290,9 +285,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                 stateDrift = nowDominantProb - prevProb;
 
                 // 3. Cyclone Momentum
-                // Momentum = (Chaos Velocity) * (Current Wind Speed [Proxy: Storm Prob?])
-                // Or strictly: PressureDrop * Wind.
-                // Let's use Chaos Velocity as Pressure Drop proxy (Chaos often precedes pressure drop)
                 cycloneMomentum = (chaosVelocity * 10) + (data.cyclone_index - (prev1.cyclone_index || 0));
 
                 // 4. Chaos Acceleration (d2Chaos/dt2)
@@ -301,8 +293,7 @@ app.post('/weather/quantum-analyze', async (req, res) => {
                     chaosAcceleration = chaosVelocity - prevVelocity;
 
                     // 5. State Lock-In Detection
-                    // If dominant state prob increased T-2 -> T-1 -> Now
-                    if (stateDrift > 0 && (prevProb > (prevStates[0]?.probability || 0))) { // Very rough proxy
+                    if (stateDrift > 0 && (prevProb > (prevStates[0]?.probability || 0))) {
                         stateLockIn = true;
                     }
                 }
@@ -310,8 +301,6 @@ app.post('/weather/quantum-analyze', async (req, res) => {
         }
 
         // --- UPDATED FINAL RISK ENGINE ---
-        // (0.3 × storm_prob) + (0.3 × chaos) + (0.2 × volatility) + (0.2 × CycloneMomentumNormalized)
-        // Normalize momentum (usually small -0.1 to 0.1, we scale it up)
         const momentumFactor = Math.min(1.0, Math.max(0, cycloneMomentum * 5)); // Cap at 1.0
 
         const finalRiskScore = (
@@ -496,23 +485,27 @@ app.get('/api/location', async (req, res) => {
     }
 });
 
-// Start Server
-const server = app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Security: Active`);
-    console.log(`Database: SQLite`);
-});
-
-// Keep process alive just in case
-setInterval(() => { }, 1000 * 60 * 60);
-
-process.on('exit', (code) => {
-    console.log(`Process exiting with code: ${code}`);
-});
-
-process.on('SIGINT', () => {
-    console.log('Received SIGINT. Shutting down.');
-    server.close(() => {
-        process.exit(0);
+// Start Server only if run directly
+if (require.main === module) {
+    const server = app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+        console.log(`Security: Active`);
+        console.log(`Database: SQLite`);
     });
-});
+
+    // Keep process alive just in case
+    setInterval(() => { }, 1000 * 60 * 60);
+
+    process.on('exit', (code) => {
+        console.log(`Process exiting with code: ${code}`);
+    });
+
+    process.on('SIGINT', () => {
+        console.log('Received SIGINT. Shutting down.');
+        server.close(() => {
+            process.exit(0);
+        });
+    });
+}
+
+module.exports = app;
