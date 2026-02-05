@@ -33,6 +33,7 @@ export interface GeocodingResult {
   latitude: number;
   longitude: number;
   country: string;
+  country_code?: string;
   admin1?: string; // State/Region
 }
 
@@ -198,6 +199,7 @@ export const searchLocations = async (query: string): Promise<GeocodingResult[]>
       latitude: result.latitude,
       longitude: result.longitude,
       country: result.country,
+      country_code: result.country_code, // Add country code for flags
       admin1: result.admin1, // State/Region
     }));
   }, 3600); // 1 Hour

@@ -1,6 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from engine import QuantumWeatherEngine
+try:
+    from .engine import QuantumWeatherEngine
+except ImportError:
+    from engine import QuantumWeatherEngine
 import uvicorn
 import os
 

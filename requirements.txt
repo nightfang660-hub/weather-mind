@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+qiskit
+numpy
+pydantic

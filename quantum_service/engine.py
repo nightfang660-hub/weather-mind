@@ -2,7 +2,10 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 import math
-from neural_net import NeuralErrorCorrector
+try:
+    from .neural_net import NeuralErrorCorrector
+except ImportError:
+    from neural_net import NeuralErrorCorrector
 
 class QuantumWeatherEngine:
     def __init__(self):
@@ -165,15 +168,7 @@ class QuantumWeatherEngine:
         dominant_state = f"{top_indices[0]:05b}"
         insight_msg = generate_desc(dominant_state)
 
-        return {
-            "storm_probability": min(1.0, storm_prob),
-            "rain_confidence": min(1.0, rain_confidence),
-            "atmospheric_chaos": min(1.0, chaos_index),
-            "forecast_reliability": final_reliability,
-            "quantum_summary": insight_msg,
-            "top_states": top_states,
-            "neural_correction_factor": round(float(correction_factor), 3) 
-        }
+
 
         # --- EXTENDED ANALYTICS (FLOOD & CYCLONE) ---
         # Volatility = 1 - Probability of most likely state
@@ -181,27 +176,32 @@ class QuantumWeatherEngine:
         volatility = 1.0 - max(probs)
 
         # Cyclone Index Calculation
-        # Factors: Storm Prob, Volatility (Chaos), Wind, Pressure Drop (Simulated by low pressure state logic)
-        # We check for state |10101> (Hot, High Pressure, Windy) vs |11011> (Tropical Storm)
-        # Simulating Pressure Drop via Qubit 2 (Pressure) being in state '0' (Low) while Wind (Q3) is '1' (High)
+        # Refined Logic: Only trigger high risk if specific "Dangerous" states are dominant.
+        # Dangerous States: |11011> (Tropical Storm), |10101> (High Wind/Pressure Anomaly)
         
-        # Aggregate probability of Low Pressure + High Wind states
-        cyclone_risk_states = sum(p for i, p in enumerate(probs) if (i & 12) == 4) # Pattern xx10x (Wind=1, Press=0)
+        # Check if any top state matches a dangerous pattern
+        dangerous_momentum = sum(s['probability'] for s in top_states if s['state'] in ['|11011⟩', '|10101⟩', '|11111⟩']) / 100.0
+        
+        # Aggregate probability of Low Pressure + High Wind states (Bitmask pattern xx10x)
+        cyclone_risk_states = sum(p for i, p in enumerate(probs) if (i & 12) == 4) 
         
         cyclone_index = (
-            (storm_prob * 0.4) + 
-            (volatility * 0.3) + 
-            (cyclone_risk_states * 5.0) # Boost signal
+            (storm_prob * 0.3) + 
+            (dangerous_momentum * 0.5) +  # Give more weight to actual dangerous states being probable
+            (cyclone_risk_states * 1.5)
         )
         
         # Extreme Rain / Flood Predictor
-        # High Humidity (Q1=1) + Clouds (Q4=1) + Low Pressure (Q2=0)
-        flood_risk_prob = sum(p for i, p in enumerate(probs) if (i & 22) == 18) # Pattern 1x01x (Cloud=1, Wind=?, Press=0, Hum=1)
+        # High Humidity (Q1=1) + Clouds (Q4=1) + Low Pressure (Q2=0) -> Pattern 1x01x
+        flood_risk_prob = sum(p for i, p in enumerate(probs) if (i & 22) == 18) 
         
         flood_risk = (
-            (rain_confidence * 0.5) +
-            (flood_risk_prob * 10.0) # High sensitivity to this specific combo
+            (rain_confidence * 0.3) +
+            (flood_risk_prob * 2.5) # Reduced multiplier further
         )
+        
+        # DEBUG: Print generated states to console
+        print(f"DEBUG: Top States Generated: {[s['state'] for s in top_states]}")
 
         return {
             "storm_probability": min(1.0, storm_prob),

@@ -201,30 +201,35 @@ app.post('/weather/quantum-analyze', async (req, res) => {
     const weatherData = weather || req.body;
 
     // Cache Logic
+    // Cache Logic
     if (location && location.name) {
-        const cutoffTime = new Date(Date.now() - 10 * 60000).toISOString();
-        const recentLogRes = await db.query(`
-            SELECT * FROM quantum_logs 
-            WHERE city = $1 AND timestamp > $2
-            ORDER BY timestamp DESC LIMIT 1
-        `, [location.name, cutoffTime]);
-        const recentLog = recentLogRes.rows[0];
+        try {
+            const cutoffTime = new Date(Date.now() - 10 * 60000).toISOString();
+            const recentLogRes = await db.query(`
+                SELECT * FROM quantum_logs 
+                WHERE city = $1 AND timestamp > $2
+                ORDER BY timestamp DESC LIMIT 1
+            `, [location.name, cutoffTime]);
+            const recentLog = recentLogRes.rows[0];
 
-        if (recentLog) {
-            console.log(`Serving cached Quantum Data for ${location.name}`);
-            return res.json({
-                storm_probability: recentLog.storm_probability,
-                rain_confidence: recentLog.rain_confidence,
-                atmospheric_chaos: recentLog.atmospheric_chaos,
-                forecast_reliability: recentLog.forecast_reliability,
-                quantum_summary: recentLog.quantum_summary,
-                top_states: JSON.parse(recentLog.top_states_json || '[]'),
-                volatility: recentLog.volatility || 0,
-                cyclone_index: recentLog.cyclone_index || 0,
-                flood_risk: recentLog.flood_risk || 0,
-                final_risk_score: recentLog.final_risk_score || 0,
-                cached: true
-            });
+            if (recentLog) {
+                console.log(`Serving cached Quantum Data for ${location.name}`);
+                return res.json({
+                    storm_probability: recentLog.storm_probability,
+                    rain_confidence: recentLog.rain_confidence,
+                    atmospheric_chaos: recentLog.atmospheric_chaos,
+                    forecast_reliability: recentLog.forecast_reliability,
+                    quantum_summary: recentLog.quantum_summary,
+                    top_states: JSON.parse(recentLog.top_states_json || '[]'),
+                    volatility: recentLog.volatility || 0,
+                    cyclone_index: recentLog.cyclone_index || 0,
+                    flood_risk: recentLog.flood_risk || 0,
+                    final_risk_score: recentLog.final_risk_score || 0,
+                    cached: true
+                });
+            }
+        } catch (cacheErr) {
+            console.warn("Cache Check Failed (Database might be offline):", cacheErr.message);
         }
     }
 
